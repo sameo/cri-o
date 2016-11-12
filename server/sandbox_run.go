@@ -167,6 +167,9 @@ func (s *Server) RunPodSandbox(ctx context.Context, req *pb.RunPodSandboxRequest
 	g.AddAnnotation("ocid/annotations", string(annotationsJSON))
 	g.AddAnnotation("ocid/log_path", logDir)
 	g.AddAnnotation("ocid/name", name)
+	g.AddAnnotation("ocid/sandbox_id", id)
+	g.AddAnnotation("ocid/sandbox_name", name)
+	g.AddAnnotation("ocid/container_type", oci.ContainerTypeInfrastructure)
 	g.AddAnnotation("ocid/container_name", containerName)
 	g.AddAnnotation("ocid/container_id", containerID)
 

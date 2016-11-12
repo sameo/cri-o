@@ -31,6 +31,13 @@ const (
 	ContainerStateStopped = "stopped"
 )
 
+const (
+	// ContainerTypeInfrastructure represents a pod container
+	ContainerTypeInfrastructure = "infrastructure"
+	// ContainerTypeContainer represents a container running within a pod
+	ContainerTypeContainer = "container"
+)
+
 // New creates a new Runtime with options provided
 func New(runtimePath string, containerDir string, conmonPath string, conmonEnv []string) (*Runtime, error) {
 	r := &Runtime{
