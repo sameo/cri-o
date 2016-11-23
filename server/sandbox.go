@@ -19,6 +19,7 @@ type sandbox struct {
 	containers     oci.Store
 	processLabel   string
 	mountLabel     string
+	netnsPath      string
 	metadata       *pb.PodSandboxMetadata
 }
 

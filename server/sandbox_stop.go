@@ -30,6 +30,10 @@ func (s *Server) StopPodSandbox(ctx context.Context, req *pb.StopPodSandboxReque
 			podInfraContainer.Name(), sb.id, err)
 	}
 
+	if err := s.deleteSandboxNetns(sb.name); err != nil {
+		return nil, err
+	}
+
 	containers := sb.containers.List()
 	containers = append(containers, podInfraContainer)
 

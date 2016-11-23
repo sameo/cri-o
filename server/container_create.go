@@ -260,6 +260,11 @@ func (s *Server) createSandboxContainer(containerID string, containerName string
 		"network": "net",
 	} {
 		nsPath := fmt.Sprintf("/proc/%d/ns/%s", podInfraState.Pid, nsFile)
+
+		if nsType == "network" {
+			nsPath = sb.netnsPath
+		}
+
 		if err := specgen.AddOrReplaceLinuxNamespace(nsType, nsPath); err != nil {
 			return nil, err
 		}
@@ -304,7 +309,7 @@ func (s *Server) createSandboxContainer(containerID string, containerName string
 		return nil, err
 	}
 
-	container, err := oci.NewContainer(containerID, containerName, containerDir, logPath, labels, metadata, sb.id, containerConfig.GetTty())
+	container, err := oci.NewContainer(containerID, containerName, containerDir, logPath, sb.netnsPath, labels, metadata, sb.id, containerConfig.GetTty())
 	if err != nil {
 		return nil, err
 	}

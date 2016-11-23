@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"syscall"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/kubernetes-incubator/cri-o/oci"
@@ -14,6 +16,40 @@ import (
 	"golang.org/x/net/context"
 	pb "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
+
+const (
+	NsRunDir  = "/var/run/netns"
+	SelfNetNs = "/proc/self/ns/net"
+)
+
+func (s *Server) createSandboxNetns(name string) (string, error) {
+	netNsPath := filepath.Join(NsRunDir, name)
+
+	args := []string{"netns", "add"}
+	args = append(args, name)
+
+	cmd := exec.Command("ip", args...)
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return netNsPath, nil
+}
+
+func (s *Server) deleteSandboxNetns(name string) error {
+	netNsPath := filepath.Join(NsRunDir, name)
+
+	if err := syscall.Unmount(netNsPath, syscall.MNT_DETACH); err != nil {
+		return err
+	}
+
+	if err := os.Remove(netNsPath); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // RunPodSandbox creates and runs a pod-level sandbox.
 func (s *Server) RunPodSandbox(ctx context.Context, req *pb.RunPodSandboxRequest) (*pb.RunPodSandboxResponse, error) {
@@ -215,6 +251,18 @@ func (s *Server) RunPodSandbox(ctx context.Context, req *pb.RunPodSandboxRequest
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		// Create the sandbox network namespace
+		sb.netnsPath, err = s.createSandboxNetns(name)
+		if err != nil {
+			return nil, err
+		}
+
+		// Pass the created namespace path to the runtime
+		err = g.AddOrReplaceLinuxNamespace("network", sb.netnsPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if req.GetConfig().GetLinux().GetSecurityContext().GetNamespaceOptions().GetHostPid() {
@@ -247,7 +295,7 @@ func (s *Server) RunPodSandbox(ctx context.Context, req *pb.RunPodSandboxRequest
 		}
 	}
 
-	container, err := oci.NewContainer(containerID, containerName, podSandboxDir, podSandboxDir, labels, nil, id, false)
+	container, err := oci.NewContainer(containerID, containerName, podSandboxDir, podSandboxDir, sb.netnsPath, labels, nil, id, false)
 	if err != nil {
 		return nil, err
 	}

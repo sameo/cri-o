@@ -349,6 +349,7 @@ type Container struct {
 	logPath    string
 	labels     fields.Set
 	sandbox    string
+	netnsPath  string
 	terminal   bool
 	state      *ContainerState
 	metadata   *pb.ContainerMetadata
@@ -365,7 +366,7 @@ type ContainerState struct {
 }
 
 // NewContainer creates a container object.
-func NewContainer(id string, name string, bundlePath string, logPath string, labels map[string]string, metadata *pb.ContainerMetadata, sandbox string, terminal bool) (*Container, error) {
+func NewContainer(id string, name string, bundlePath string, logPath string, netnsPath string, labels map[string]string, metadata *pb.ContainerMetadata, sandbox string, terminal bool) (*Container, error) {
 	c := &Container{
 		id:         id,
 		name:       name,
@@ -373,6 +374,7 @@ func NewContainer(id string, name string, bundlePath string, logPath string, lab
 		logPath:    logPath,
 		labels:     labels,
 		sandbox:    sandbox,
+		netnsPath:  netnsPath,
 		terminal:   terminal,
 		metadata:   metadata,
 	}
@@ -414,7 +416,8 @@ func (c *Container) NetNsPath() (string, error) {
 	if c.state == nil {
 		return "", fmt.Errorf("container state is not populated")
 	}
-	return fmt.Sprintf("/proc/%d/ns/net", c.state.Pid), nil
+
+	return c.netnsPath, nil
 }
 
 // Metadata returns the metadata of the container.

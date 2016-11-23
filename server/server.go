@@ -70,7 +70,7 @@ func (s *Server) loadContainer(id string) error {
 	}
 	containerPath := filepath.Join(s.runtime.ContainerDir(), id)
 
-	ctr, err := oci.NewContainer(id, name, containerPath, m.Annotations["ocid/log_path"], labels, &metadata, sb.id, tty)
+	ctr, err := oci.NewContainer(id, name, containerPath, m.Annotations["ocid/log_path"], sb.netnsPath, labels, &metadata, sb.id, tty)
 	if err != nil {
 		return err
 	}
@@ -125,6 +125,7 @@ func (s *Server) loadSandbox(id string) error {
 		containers:   oci.NewMemoryStore(),
 		processLabel: processLabel,
 		mountLabel:   mountLabel,
+		netnsPath:    filepath.Join(NsRunDir, name),
 		annotations:  annotations,
 		metadata:     &metadata,
 	}
@@ -140,7 +141,7 @@ func (s *Server) loadSandbox(id string) error {
 	if err != nil {
 		return err
 	}
-	scontainer, err := oci.NewContainer(m.Annotations["ocid/container_id"], cname, sandboxPath, sandboxPath, labels, nil, id, false)
+	scontainer, err := oci.NewContainer(m.Annotations["ocid/container_id"], cname, sandboxPath, sandboxPath, sb.netnsPath, labels, nil, id, false)
 	if err != nil {
 		return err
 	}
