@@ -302,22 +302,22 @@ func (s *Server) RunPodSandbox(ctx context.Context, req *pb.RunPodSandboxRequest
 
 	sb.infraContainer = container
 
+	// setup the network
+	podNamespace := ""
+	fmt.Printf("Container [%s] net ns path: %s\n", sb.netnsPath, containerName)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.netPlugin.SetUpPod(sb.netnsPath, podNamespace, id, containerName); err != nil {
+		return nil, fmt.Errorf("failed to create network for container %s in sandbox %s: %v", containerName, id, err)
+	}
+
 	if err = s.runtime.CreateContainer(container); err != nil {
 		return nil, err
 	}
 
 	if err = s.runtime.UpdateStatus(container); err != nil {
 		return nil, err
-	}
-
-	// setup the network
-	podNamespace := ""
-	netnsPath, err := container.NetNsPath()
-	if err != nil {
-		return nil, err
-	}
-	if err = s.netPlugin.SetUpPod(netnsPath, podNamespace, id, containerName); err != nil {
-		return nil, fmt.Errorf("failed to create network for container %s in sandbox %s: %v", containerName, id, err)
 	}
 
 	if err = s.runtime.StartContainer(container); err != nil {
