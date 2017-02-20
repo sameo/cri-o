@@ -69,6 +69,20 @@ type APIConfig struct {
 	Listen string `toml:"listen"`
 }
 
+type RuntimePrivilegedConfig struct {
+	// Runtime is a path to the OCI runtime which ocid will be using for host
+	// privileged operations.
+	Runtime string `toml:"runtime"`
+
+	// Privileged determines if the privileged runtime should be used when
+	// the kubelet sandbox description privileged flag is set to true.
+	Privileged bool `toml:"selinux"`
+
+	// HostNamespaces determines if the privileged runtime should be used when
+	// any of the kubelete sandbox security context namespaces is set to true.
+	HostNamespaces []string `toml:"host_namespaces"`
+}
+
 // RuntimeConfig represents the "ocid.runtime" TOML config table.
 type RuntimeConfig struct {
 	// Runtime is a path to the OCI runtime which ocid will be using. Currently
@@ -96,6 +110,9 @@ type RuntimeConfig struct {
 	// CgroupManager is the manager implementation name which is used to
 	// handle cgroups for containers.
 	CgroupManager string `toml:"cgroup_manager"`
+
+	// RuntimePrivileged holds the host privileged operations runtime settings.
+	RuntimePrivileged RuntimePrivilegedConfig `toml:"privileged"`
 }
 
 // ImageConfig represents the "ocid.image" TOML config table.
@@ -173,6 +190,7 @@ func (c *Config) FromFile(path string) error {
 	}
 
 	t.toConfig(c)
+
 	return nil
 }
 
@@ -206,6 +224,11 @@ func DefaultConfig() *Config {
 		},
 		RuntimeConfig: RuntimeConfig{
 			Runtime: "/usr/bin/runc",
+			RuntimePrivileged: RuntimePrivilegedConfig{
+				Runtime:        "",
+				Privileged:     false,
+				HostNamespaces: []string{},
+			},
 			Conmon:  conmonPath,
 			ConmonEnv: []string{
 				"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",

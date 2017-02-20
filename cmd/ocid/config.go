@@ -67,6 +67,26 @@ apparmor_profile = "{{ .ApparmorProfile }}"
 # for the runtime.
 cgroup_manager = "{{ .CgroupManager }}"
 
+# The "ocid.runtime.privileged" table contains settings pertaining to the OCI
+# runtime used for host privileged operations.
+[ocid.runtime.privileged]
+
+# runtime is a path to the OCI runtime which ocid will be using for host
+# privileged operations.
+# When not specified, this path points to the default runtime as described
+# in the [ocid.runtime] table.
+runtime = "{{ .RuntimePrivileged.Runtime }}"
+
+# privileged specifies if the privileged runtime should be used when the
+# privileged flag is set in the kubelet sandbox description.
+privileged = {{ .RuntimePrivileged.Privileged }}
+
+# If the kubelet sandbox security context namespaces options sets any of
+# the host_namespaces to true, then the privileged runtime should be used
+# for that sandbox.
+host_namespaces = [
+{{ range $opt := .RuntimePrivileged.HostNamespaces }}{{ printf "\t%q,\n" $opt }}{{ end }}]
+
 # The "ocid.image" table contains settings pertaining to the
 # management of OCI images.
 [ocid.image]
