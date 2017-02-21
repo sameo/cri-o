@@ -14,6 +14,7 @@ import (
 	"github.com/kubernetes-incubator/cri-o/server/apparmor"
 	"github.com/kubernetes-incubator/cri-o/server/seccomp"
 	"github.com/opencontainers/runc/libcontainer/label"
+	rspec "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/opencontainers/runtime-tools/generate"
 	"golang.org/x/net/context"
 	pb "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
@@ -286,9 +287,18 @@ func (s *Server) createSandboxContainer(ctx context.Context, containerID string,
 
 	logrus.Debugf("pod container state %+v", podInfraState)
 
-	ipcNsPath := fmt.Sprintf("/proc/%d/ns/ipc", podInfraState.Pid)
-	if err := specgen.AddOrReplaceLinuxNamespace("ipc", ipcNsPath); err != nil {
-		return nil, err
+	for nsType, nsFile := range map[rspec.NamespaceType]string{
+		rspec.PIDNamespace:    "pid",
+		rspec.MountNamespace:  "mount",
+		rspec.IPCNamespace:    "ipc",
+		rspec.UTSNamespace:    "uts",
+		rspec.UserNamespace:   "user",
+		rspec.CgroupNamespace: "cgroup",
+	} {
+		nsPath := fmt.Sprintf("/proc/%d/ns/%s", podInfraState.Pid, nsFile)
+		if err := specgen.AddOrReplaceLinuxNamespace((string)(nsType), nsPath); err != nil {
+			return nil, err
+		}
 	}
 
 	netNsPath := sb.netNsPath()
