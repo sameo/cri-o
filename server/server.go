@@ -470,7 +470,7 @@ func New(config *Config) (*Server, error) {
 		return nil, err
 	}
 
-	r, err := oci.New(config.Runtime, config.Conmon, config.ConmonEnv, config.CgroupManager)
+	r, err := oci.New(config.Runtime, config.RuntimePrivileged.Runtime, config.Conmon, config.ConmonEnv, config.CgroupManager)
 	if err != nil {
 		return nil, err
 	}
