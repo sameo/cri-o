@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/label"
 	rspec "github.com/opencontainers/runtime-spec/specs-go"
 	pb "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	"github.com/syndtr/gocapability/capability"
 )
 
 const (
@@ -48,6 +50,68 @@ type Server struct {
 
 	appArmorEnabled bool
 	appArmorProfile string
+}
+
+func ociPrivileged(spec *rspec.Spec) bool {
+	var capList []string
+	for _, cap := range capability.List() {
+		capList = append(capList, fmt.Sprintf("CAP_%s", strings.ToUpper(cap.String())))
+	}
+
+	// Check that we have all CAPS.
+	if len(spec.Process.Capabilities) != len(capList) {
+		return false
+	}
+
+	for i := range spec.Process.Capabilities {
+		if spec.Process.Capabilities[i] != capList[i] {
+			return false
+		}
+	}
+
+	// Check that none of the security frameworks are enabled.
+	if spec.Process.SelinuxLabel == "" &&
+		spec.Process.ApparmorProfile == "" &&
+		spec.Linux.Seccomp == nil {
+		return true
+	}
+
+	return false
+}
+
+var hostNamespaces = []rspec.NamespaceType{
+	rspec.PIDNamespace, rspec.IPCNamespace, rspec.NetworkNamespace,
+}
+
+func (s *Server) privilegedOCIContainer(spec *rspec.Spec) bool {
+	if ociPrivileged(spec) {
+		return true
+	}
+
+	linux := spec.Linux
+	if linux == nil {
+		return false
+	}
+
+	namespaces := 0
+	for _, n := range linux.Namespaces {
+		for _, h := range hostNamespaces {
+			if n.Type != h {
+				continue
+			}
+
+			namespaces = namespaces + 1
+		}
+	}
+
+	// If any of the PID, IPC or networking namespaces are not
+	// defined, we need to use the host one and this is a
+	// privileged container.
+	if namespaces < len(hostNamespaces) {
+		return true
+	}
+
+	return false
 }
 
 func (s *Server) loadContainer(id string) error {
@@ -106,7 +170,8 @@ func (s *Server) loadContainer(id string) error {
 		return err
 	}
 
-	ctr, err := oci.NewContainer(id, name, containerPath, m.Annotations["ocid/log_path"], sb.netNs(), labels, annotations, img, &metadata, sb.id, tty)
+	privileged := s.privilegedOCIContainer(&m)
+	ctr, err := oci.NewContainer(id, name, containerPath, m.Annotations["ocid/log_path"], sb.netNs(), labels, annotations, img, &metadata, sb.id, tty, privileged)
 	if err != nil {
 		return err
 	}
@@ -224,7 +289,8 @@ func (s *Server) loadSandbox(id string) error {
 			s.releaseContainerName(cname)
 		}
 	}()
-	scontainer, err := oci.NewContainer(m.Annotations["ocid/container_id"], cname, sandboxPath, sandboxPath, sb.netNs(), labels, annotations, nil, nil, id, false)
+	privileged := s.privilegedOCIContainer(&m)
+	scontainer, err := oci.NewContainer(m.Annotations["ocid/container_id"], cname, sandboxPath, sandboxPath, sb.netNs(), labels, annotations, nil, nil, id, false, privileged)
 	if err != nil {
 		return err
 	}

@@ -26,6 +26,32 @@ const (
 	seccompLocalhostPrefix = "localhost/"
 )
 
+// privilegedContainer returns true if the container configuration
+// requires additional host privileges for the container.
+func (s *Server) privilegedContainer(containerConfig *pb.ContainerConfig) bool {
+	securityContext := containerConfig.GetLinux().GetSecurityContext()
+	if securityContext == nil {
+		return false
+	}
+
+	if securityContext.Privileged {
+		return true
+	}
+
+	namespaceOptions := securityContext.GetNamespaceOptions()
+	if namespaceOptions == nil {
+		return false
+	}
+
+	if namespaceOptions.HostNetwork ||
+		namespaceOptions.HostPid ||
+		namespaceOptions.HostIpc {
+		return true
+	}
+
+	return false
+}
+
 // CreateContainer creates a new container in specified PodSandbox
 func (s *Server) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (res *pb.CreateContainerResponse, err error) {
 	logrus.Debugf("CreateContainerRequest %+v", req)
@@ -394,7 +420,8 @@ func (s *Server) createSandboxContainer(ctx context.Context, containerID string,
 		return nil, err
 	}
 
-	container, err := oci.NewContainer(containerID, containerName, containerInfo.RunDir, logPath, sb.netNs(), labels, annotations, imageSpec, metadata, sb.id, containerConfig.Tty)
+	privileged := s.privilegedContainer(containerConfig)
+	container, err := oci.NewContainer(containerID, containerName, containerInfo.RunDir, logPath, sb.netNs(), labels, annotations, imageSpec, metadata, sb.id, containerConfig.Tty, privileged)
 	if err != nil {
 		return nil, err
 	}
