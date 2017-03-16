@@ -15,6 +15,7 @@ import (
 	"github.com/kubernetes-incubator/cri-o/server/seccomp"
 	"github.com/opencontainers/runc/libcontainer/label"
 	"github.com/opencontainers/runtime-tools/generate"
+	"github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/net/context"
 	pb "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
@@ -54,6 +55,60 @@ func addOciBindMounts(sb *sandbox, containerConfig *pb.ContainerConfig, specgen 
 	}
 
 	return nil
+}
+
+// buildOCIProcessArgs build an OCI compatible process arguments slice.
+func buildOCIProcessArgs(containerKubeConfig *pb.ContainerConfig, imageOCIConfig *v1.Image) []string {
+        processArgs := []string{}
+
+        kubeCommands := containerKubeConfig.Command
+        kubeArgs := containerKubeConfig.Args
+
+        if imageOCIConfig == nil {
+               // We did not get an OCI Image configuration.
+               // We should only use the information we got from kubelet,
+               // and fall back to a reasonable default otherwise.
+
+                if kubeCommands == nil && kubeArgs == nil {
+                        processArgs = []string{"/bin/sh"}
+                }
+
+                if kubeCommands != nil {
+                        processArgs = append(processArgs, kubeCommands...)
+                }
+
+                if kubeArgs != nil {
+                        processArgs = append(processArgs, kubeArgs...)
+                }
+        } else {
+               // We got an OCI Image configuration.
+               // We will only use it if the kubelet information
+               // is incomplete.
+
+                if kubeCommands == nil {
+                        if imageOCIConfig.Config.Entrypoint != nil {
+                                processArgs = append(processArgs, imageOCIConfig.Config.Entrypoint...)
+                        }
+                } else {
+                        processArgs = append(processArgs, kubeCommands...)
+                }
+
+                if kubeArgs == nil {
+                        if imageOCIConfig.Config.Cmd != nil {
+                                processArgs = append(processArgs, imageOCIConfig.Config.Cmd...)
+                        }
+                } else {
+                        processArgs = append(processArgs, kubeArgs...)
+                }
+
+                if processArgs == nil {
+                        processArgs = []string{"/bin/sh"}
+                }
+        }
+
+        logrus.Debugf("OCI process args %v", processArgs)
+
+        return processArgs
 }
 
 // CreateContainer creates a new container in specified PodSandbox
@@ -144,19 +199,6 @@ func (s *Server) createSandboxContainer(ctx context.Context, containerID string,
 
 	// creates a spec Generator with the default spec.
 	specgen := generate.New()
-
-	processArgs := []string{}
-	commands := containerConfig.Command
-	args := containerConfig.Args
-	if commands == nil && args == nil {
-		processArgs = nil
-	}
-	if commands != nil {
-		processArgs = append(processArgs, commands...)
-	}
-	if args != nil {
-		processArgs = append(processArgs, args...)
-	}
 
 	cwd := containerConfig.WorkingDir
 	if cwd == "" {
@@ -372,13 +414,7 @@ func (s *Server) createSandboxContainer(ctx context.Context, containerID string,
 		return nil, fmt.Errorf("failed to mount container %s(%s): %v", containerName, containerID, err)
 	}
 
-	if processArgs == nil {
-		if containerInfo.Config != nil && len(containerInfo.Config.Config.Cmd) > 0 {
-			processArgs = containerInfo.Config.Config.Cmd
-		} else {
-			processArgs = []string{"/bin/sh"}
-		}
-	}
+	processArgs := buildOCIProcessArgs(containerConfig, containerInfo.Config)
 	specgen.SetProcessArgs(processArgs)
 
 	// by default, the root path is an empty string. set it now.
