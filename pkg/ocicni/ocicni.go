@@ -11,6 +11,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/containernetworking/cni/libcni"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
+	"github.com/fsnotify/fsnotify"
 )
 
 type cniNetworkPlugin struct {
@@ -163,15 +164,73 @@ func (plugin *cniNetworkPlugin) setDefaultNetwork(n *cniNetwork) {
 	plugin.defaultNetwork = n
 }
 
+var errMissingDefaultNetwork = errors.New("Missing CNI default network")
+
 func (plugin *cniNetworkPlugin) checkInitialized() error {
 	if plugin.getDefaultNetwork() == nil {
-		return errors.New("cni config uninitialized")
+		return errMissingDefaultNetwork
 	}
 	return nil
 }
 
 func (plugin *cniNetworkPlugin) Name() string {
 	return CNIPluginName
+}
+
+func (plugin *cniNetworkPlugin) monitorNetDir(netnsPath string, namespace string, name string, id string, timeout time.Duration) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Errorf("could not create new watcher", err)
+		return err
+	}
+	defer watcher.Close()
+
+	monitorTimeout := make(chan bool)
+	monitorDone := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case event := <-watcher.Events:
+				log.Debugf("CNI monitoring event %v", event)
+				if event.Op&fsnotify.Create != fsnotify.Create {
+					continue
+				}
+
+				if err := plugin.setUpPod(netnsPath, namespace, name, id); err != nil {
+					log.Errorf("could not set up pod with new CNI conf %v", err)
+				}
+
+				log.Debugf("CNI asynchronous setting succeeded")
+				close(monitorDone)
+				return
+
+			case err := <-watcher.Errors:
+				log.Errorf("CNI monitoring error %v", err)
+				close(monitorDone)
+				return
+
+			case <-monitorTimeout:
+				log.Errorf("CNI monitoring timeout")
+				return
+			}
+		}
+	}()
+
+	if err = watcher.Add(plugin.pluginDir); err != nil {
+		log.Error(err)
+		return err
+	}
+
+	select {
+	case <-monitorDone:
+		log.Debugf("CNI monitoring finished")
+
+	case <-time.After(time.Second * timeout):
+		close(monitorTimeout)
+	}
+
+	return nil
 }
 
 func (plugin *cniNetworkPlugin) setUpPod(netnsPath string, namespace string, name string, id string) error {
@@ -198,7 +257,18 @@ func (plugin *cniNetworkPlugin) setUpPod(netnsPath string, namespace string, nam
 }
 
 func (plugin *cniNetworkPlugin) SetUpPod(netnsPath string, namespace string, name string, id string) error {
+	// First let's sync with the latest configuration files
+	plugin.syncNetworkConfig()
+
+	// Now we can check if we really have a default network
 	if err := plugin.checkInitialized(); err != nil {
+		if err == errMissingDefaultNetwork {
+			// We are missing a default network.
+			// Let's wait 30s and see if a new configuration file appears.
+			go plugin.monitorNetDir(netnsPath, namespace, name, id, 30)
+			return nil
+		}
+
 		return err
 	}
 
