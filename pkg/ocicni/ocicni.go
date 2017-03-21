@@ -50,14 +50,6 @@ func InitCNI(pluginDir string, cniDirs ...string) (CNIPlugin, error) {
 		return &cniNoOp{}, nil
 	}
 
-	// sync network config from pluginDir periodically to detect network config updates
-	go func() {
-		t := time.NewTimer(10 * time.Second)
-		for {
-			plugin.syncNetworkConfig()
-			<-t.C
-		}
-	}()
 	return plugin, nil
 }
 
