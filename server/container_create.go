@@ -124,6 +124,10 @@ func buildOCIProcessArgs(containerKubeConfig *pb.ContainerConfig, imageOCIConfig
 func (s *Server) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (res *pb.CreateContainerResponse, err error) {
 	logrus.Debugf("CreateContainerRequest %+v", req)
 	s.Update()
+
+	s.serverLock.Lock()
+        defer s.serverLock.Unlock()
+
 	sbID := req.PodSandboxId
 	if sbID == "" {
 		return nil, fmt.Errorf("PodSandboxId should not be empty")

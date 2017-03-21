@@ -34,6 +34,7 @@ type Server struct {
 	images       storage.ImageServer
 	storage      storage.RuntimeServer
 	stateLock    sync.Mutex
+	serverLock   sync.Mutex
 	state        *serverState
 	netPlugin    ocicni.CNIPlugin
 	podNameIndex *registrar.Registrar
@@ -289,6 +290,9 @@ func (s *Server) Update() {
 }
 
 func (s *Server) update() error {
+	s.serverLock.Lock()
+	defer s.serverLock.Unlock()
+
 	containers, err := s.store.Containers()
 	if err != nil && !os.IsNotExist(err) {
 		logrus.Warnf("could not read containers and sandboxes: %v", err)
