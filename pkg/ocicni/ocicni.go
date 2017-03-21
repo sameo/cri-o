@@ -88,7 +88,7 @@ func getDefaultCNINetwork(pluginDir string, cniDirs []string, vendorCNIDirPrefix
 	case err != nil:
 		return nil, err
 	case len(files) == 0:
-		return nil, fmt.Errorf("No networks found in %s", pluginDir)
+		return nil, nil
 	}
 
 	sort.Strings(files)
